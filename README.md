@@ -67,7 +67,7 @@ lp3-taller2
 1. Clona este repositorio:
 
    ```bash
-   git clone https://github.com/UR-CC/lp3-taller2.git
+   git clone https://github.com/Acyourproblemboy/lp3-taller2.git
    cd lp3-taller2
    ```
 
