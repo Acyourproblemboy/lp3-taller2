@@ -5,6 +5,7 @@ Endpoints para gestionar usuarios en la plataforma.
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlmodel import Session, select
+from sqlalchemy import func
 from typing import List
 
 from app.database import get_session
@@ -17,14 +18,14 @@ from app.schemas import (
     PeliculaRead
 )
 
-# TODO: Crear el router con prefijo y tags
+# Crear el router con prefijo y tags
 router = APIRouter(
     prefix="/api/usuarios",
     tags=["Usuarios"]
 )
 
 
-# TODO: Endpoint para listar todos los usuarios
+# Endpoint para listar todos los usuarios
 @router.get("/", response_model=List[UsuarioRead])
 def listar_usuarios(
     session: Session = Depends(get_session),
@@ -37,12 +38,14 @@ def listar_usuarios(
     - **skip**: Número de registros a omitir (para paginación)
     - **limit**: Número máximo de registros a retornar
     """
-    # TODO: Consultar todos los usuarios con paginación
+    # Consultar todos los usuarios con paginación
+    statement = select(Usuario).offset(skip).limit(limit)
+    usuarios = session.exec(statement).all()
 
     return usuarios
 
 
-# TODO: Endpoint para crear un nuevo usuario
+# Endpoint para crear un nuevo usuario
 @router.post("/", response_model=UsuarioRead, status_code=status.HTTP_201_CREATED)
 def crear_usuario(
     usuario: UsuarioCreate,
@@ -54,17 +57,25 @@ def crear_usuario(
     - **nombre**: Nombre del usuario
     - **correo**: Correo electrónico único
     """
-    # TODO: Verificar que el correo no exista
-    statement = 
-    existing_user = 
-    
-    # TODO: Crear el nuevo usuario
+    # Verificar que el correo no exista
+    statement = select(Usuario).where(Usuario.correo == usuario.correo)
+    existing_user = session.exec(statement).first()
+
+    if existing_user:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"El correo '{usuario.correo}' ya está en uso"
+        )
+
+    # Crear el nuevo usuario
     db_usuario = Usuario.model_validate(usuario)
-    
+    session.add(db_usuario)
+    session.commit()
+    session.refresh(db_usuario)
     return db_usuario
 
 
-# TODO: Endpoint para obtener un usuario por ID
+# Endpoint para obtener un usuario por ID
 @router.get("/{usuario_id}", response_model=UsuarioRead)
 def obtener_usuario(
     usuario_id: int,
@@ -75,13 +86,19 @@ def obtener_usuario(
     
     - **usuario_id**: ID del usuario
     """
-    # TODO: Buscar el usuario por ID
-    usuario = 
-    
+    # Buscar el usuario por ID
+    usuario = session.get(Usuario, usuario_id)
+
+    if not usuario:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Usuario con id {usuario_id} no encontrado"
+        )
+
     return usuario
 
 
-# TODO: Endpoint para actualizar un usuario
+# Endpoint para actualizar un usuario
 @router.put("/{usuario_id}", response_model=UsuarioRead)
 def actualizar_usuario(
     usuario_id: int,
@@ -95,18 +112,35 @@ def actualizar_usuario(
     - **nombre**: Nuevo nombre (opcional)
     - **correo**: Nuevo correo (opcional)
     """
-    # TODO: Buscar el usuario
-    db_usuario = 
-    
-    # TODO: Si se actualiza el correo, verificar que no exista
-    
-    # TODO: Actualizar solo los campos proporcionados
-    usuario_data = 
-    
+    # Buscar el usuario
+    db_usuario = session.get(Usuario, usuario_id)
+
+    if not db_usuario:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Usuario con id {usuario_id} no encontrado"
+        )
+
+    # Si se actualiza el correo, verificar que no exista
+    if usuario_update.correo is not None:
+        statement = select(Usuario).where(Usuario.correo == usuario_update.correo)
+        existing_user = session.exec(statement).first()
+        if existing_user and existing_user.id != usuario_id:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"El correo '{usuario_update.correo}' ya está en uso"
+            )
+
+    # Actualizar solo los campos proporcionados
+    usuario_data = usuario_update.model_dump(exclude_unset=True)
+    for key, value in usuario_data.items():
+        setattr(db_usuario, key, value)
+    session.commit()
+    session.refresh(db_usuario)
     return db_usuario
 
 
-# TODO: Endpoint para eliminar un usuario
+# Endpoint para eliminar un usuario
 @router.delete("/{usuario_id}", status_code=status.HTTP_204_NO_CONTENT)
 def eliminar_usuario(
     usuario_id: int,
@@ -133,7 +167,7 @@ def eliminar_usuario(
     return None
 
 
-# TODO: Endpoint para obtener los favoritos de un usuario
+# Endpoint para obtener los favoritos de un usuario
 @router.get("/{usuario_id}/favoritos", response_model=List[PeliculaRead])
 def listar_favoritos_usuario(
     usuario_id: int,
@@ -144,16 +178,22 @@ def listar_favoritos_usuario(
     
     - **usuario_id**: ID del usuario
     """
-    # TODO: Verificar que el usuario existe
-    usuario = 
+    # Verificar que el usuario existe
+    usuario = session.get(Usuario, usuario_id)
+    if not usuario:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Usuario con id {usuario_id} no encontrado"
+        )
     
-    # TODO: Obtener las películas favoritas del usuario
-    statement = 
-    
+    # Obtener las películas favoritas del usuario
+    statement = select(Pelicula).join(Favorito).where(Favorito.id_usuario == usuario_id)
+    peliculas = session.exec(statement).all()
+
     return peliculas
 
 
-# TODO: Endpoint para marcar una película como favorita
+# Endpoint para marcar una película como favorita
 @router.post(
     "/{usuario_id}/favoritos/{pelicula_id}",
     status_code=status.HTTP_201_CREATED
@@ -197,13 +237,15 @@ def marcar_favorito(
             detail="La película ya está marcada como favorita"
         )
     
-    # TODO: Crear el favorito
-    favorito = 
-    
-    return {"message": "Película marcada como favorita exitosamente"}
+    #  Crear el favorito
+    favorito = Favorito(id_usuario=usuario_id, id_pelicula=pelicula_id)
+    session.add(favorito)
+    session.commit()
+
+    return {"message": "Película marcada como favorita exitosamente"}   
 
 
-# TODO: Endpoint para eliminar una película de favoritos
+# Endpoint para eliminar una película de favoritos
 @router.delete(
     "/{usuario_id}/favoritos/{pelicula_id}",
     status_code=status.HTTP_204_NO_CONTENT
@@ -219,23 +261,27 @@ def eliminar_favorito(
     - **usuario_id**: ID del usuario
     - **pelicula_id**: ID de la película
     """
-    # TODO: Buscar el favorito
-    statement = 
+    # Buscar el favorito
+    statement = select(Favorito).where(
+        Favorito.id_usuario == usuario_id,
+        Favorito.id_pelicula == pelicula_id
+    )
+    favorito = session.exec(statement).first()
 
-    favorito = 
-    
     if not favorito:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="El favorito no existe"
         )
     
-    # TODO: Eliminar el favorito
-    
+    # Eliminar el favorito
+    session.delete(favorito)
+    session.commit()
+
     return None
 
 
-# TODO: Opcional - Endpoint para estadísticas del usuario
+# Opcional - Endpoint para estadísticas del usuario
 @router.get("/{usuario_id}/estadisticas")
 def obtener_estadisticas_usuario(
     usuario_id: int,
@@ -246,8 +292,32 @@ def obtener_estadisticas_usuario(
     
     - **usuario_id**: ID del usuario
     """
-    # TODO: Verificar que el usuario existe
-    # TODO: Calcular número total de favoritos
-    # TODO: Obtener géneros más favoritos
-    # TODO: Calcular tiempo total de películas favoritas
-    pass
+    # Verificar que el usuario existe
+    usuario = session.get(Usuario, usuario_id)
+    if not usuario:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Usuario con id {usuario_id} no encontrado"
+        )
+
+    # Calcular número total de favoritos
+    total_favoritos = session.exec(
+        select(func.count(Favorito.id)).where(Favorito.id_usuario == usuario_id)
+    ).one()
+    # Obtener géneros más favoritos
+    statement = (
+        select(Pelicula.genero, func.count(Favorito.id).label("favoritos_count"))
+        .join(Favorito, Favorito.id_pelicula == Pelicula.id)
+        .where(Favorito.id_usuario == usuario_id)
+        .group_by(Pelicula.genero)
+        .order_by(func.count(Favorito.id).desc())
+    )
+    generos_favoritos = session.exec(statement).all()
+    # Calcular tiempo total de películas favoritas
+    statement = (
+        select(func.sum(Pelicula.duracion))
+        .join(Favorito, Favorito.id_pelicula == Pelicula.id)
+        .where(Favorito.id_usuario == usuario_id)
+    )
+    tiempo_total = session.exec(statement).one()
+    
