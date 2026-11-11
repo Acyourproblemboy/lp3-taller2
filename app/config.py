@@ -3,8 +3,9 @@ Configuración de la aplicación.
 Maneja diferentes entornos: desarrollo, pruebas y producción.
 """
 
-from pydantic_settings import BaseSettings
-from typing import Literal
+from typing import List, Literal
+from pydantic import field_validator
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
@@ -13,84 +14,99 @@ class Settings(BaseSettings):
     Lee las variables de entorno desde el archivo .env
     """
     
-    # TODO: Configuración básica de la aplicación
+    # Configuración básica de la aplicación
     app_name: str = "API de Películas"
     app_version: str = "1.0.0"
     
-    # TODO: Configuración del entorno
-    # environment: Literal["development", "testing", "production"] = "development"
-    environment: str = "development"
-    
-    # TODO: Configuración de la base de datos
+    # Configuración del entorno
+    environment: Literal["development", "testing", "production"] = "development"
+      
+    # Configuración de la base de datos
     # Para SQLite: sqlite:///./peliculas.db
     # Para PostgreSQL: postgresql://user:password@localhost/dbname
     database_url: str = "sqlite:///./peliculas.db"
     
-    # TODO: Configuración del servidor
+    # Configuración del servidor
     host: str = "0.0.0.0"
     port: int = 8000
     debug: bool = True
     
-    # TODO: Configuración de CORS
+    # Configuración de CORS
     # En desarrollo puedes usar ["*"], en producción especifica los orígenes permitidos
-    cors_origins: list[str] = ["*"]
+    cors_origins: List[str] = ["*"]
     
-    # TODO: Configuración de seguridad (para futuras mejoras)
-    # secret_key: str = "your-secret-key-here"  # Cambiar en producción
-    # algorithm: str = "HS256"
-    # access_token_expire_minutes: int = 30
+    # Configuración de seguridad (para futuras mejoras)
+    secret_key: str = "your-secret-key-here"  # Cambiar en producción
+    algorithm: str = "HS256"
+    access_token_expire_minutes: int = 30
     
-    # TODO: Configuración de logging
-    # log_level: str = "INFO"
+    # Configuración de logging
+    log_level: str = "INFO"
     
-    class Config:
-        """
-        Configuración de Pydantic Settings.
-        """
-        env_file = ".env"
-        env_file_encoding = "utf-8"
-        case_sensitive = False
+    # Configuración moderna en Pydantic v2
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        env_file_encoding="utf-8",
+        case_sensitive=False,
+        extra="ignore"
+    )
+    
+    # class Config:
+    #     """
+    #     Configuración de Pydantic Settings.
+    #     """
+    #     env_file = ".env"
+    #     env_file_encoding = "utf-8"
+    #     case_sensitive = False
         
-        # TODO: Opcional - Agregar validación personalizada
-        # @validator("database_url")
-        # def validate_database_url(cls, v):
-        #     if not v:
-        #         raise ValueError("DATABASE_URL no puede estar vacío")
-        #     return v
+        # Opcional - Agregar validación personalizada
+    @field_validator("database_url")
+    @classmethod 
+    def validate_database_url(cls, v: str) -> str:
+        if not v or not v.strip():
+            raise ValueError("DATABASE_URL no puede estar vacío")
+        return v
 
 
-# TODO: Crear una instancia global de Settings
-settings = Settings()
+# Crear una instancia global de Settings
+# settings = Settings()
 
 
-# TODO: Opcional - Crear diferentes configuraciones para cada entorno
+# Opcional - Crear diferentes configuraciones para cada entorno
 class DevelopmentSettings(Settings):
     """Configuración para el entorno de desarrollo."""
     debug: bool = True
-    # TODO: Agregar configuraciones específicas de desarrollo
+    # Agregar configuraciones específicas de desarrollo
+    log_level: str = "DEBUG"
 
 
 class TestingSettings(Settings):
     """Configuración para el entorno de pruebas."""
-    # TODO: Usar una base de datos diferente para pruebas
+    # Usar una base de datos diferente para pruebas
+    debug: bool = True
     database_url: str = "sqlite:///./test_peliculas.db"
-    # TODO: Agregar configuraciones específicas de pruebas
+    # Agregar configuraciones específicas de pruebas
+    log_level: str = "DEBUG"
 
 
 class ProductionSettings(Settings):
     """Configuración para el entorno de producción."""
     debug: bool = False
-    # TODO: Agregar configuraciones específicas de producción
-    # TODO: Cambiar a una base de datos más robusta (PostgreSQL, MySQL)
-    # database_url: str = "postgresql://user:password@localhost/peliculas_prod"
+    # Agregar configuraciones específicas de producción
+    log_level: str = "INFO"
+    # Cambiar a una base de datos más robusta (PostgreSQL, MySQL)
+    cors_origins: List[str] = ["https://tu-dominio.com"]
+    database_url: str = "postgresql://user:password@localhost/peliculas_prod"
 
 
-# TODO: Función para obtener la configuración según el entorno
+# Función para obtener la configuración según el entorno
+
 def get_settings() -> Settings:
     """
     Retorna la configuración apropiada según el entorno.
     """
-    env = settings.environment.lower()
+    temp_settings = Settings()
+    env = temp_settings.environment.lower()
     
     if env == "testing":
         return TestingSettings()
@@ -99,12 +115,13 @@ def get_settings() -> Settings:
     else:
         return DevelopmentSettings()
 
+settings = get_settings()
 
-# TODO: Opcional - Agregar validación de configuración al inicio
-# def validate_settings():
-#     """Valida que todas las configuraciones necesarias estén presentes."""
-#     required_settings = ["database_url", "app_name"]
-#     for setting in required_settings:
-#         if not getattr(settings, setting, None):
-#             raise ValueError(f"Configuración requerida no encontrada: {setting}")
+# Opcional - Agregar validación de configuración al inicio
+def validate_settings():
+    """Valida que todas las configuraciones necesarias estén presentes."""
+    required_settings = ["database_url", "app_name"]
+    for setting in required_settings:
+        if not getattr(settings, setting, None):
+            raise ValueError(f"Configuración requerida no encontrada: {setting}")
 
