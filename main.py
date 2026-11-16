@@ -65,10 +65,9 @@ app.add_middleware(
 
 # Incluir los routers de usuarios, peliculas y favoritos
 # Ejemplo:
-app.include_router(usuarios.router, prefix="/api/usuarios", tags=["Usuarios"])
-app.include_router(peliculas.router, prefix="/api/peliculas", tags=["Películas"])
-app.include_router(favoritos.router, prefix="/api/favoritos", tags=["Favoritos"])
-
+app.include_router(usuarios.router)
+app.include_router(peliculas.router)
+app.include_router(favoritos.router)
 
 # Crear un endpoint raíz que retorne información básica de la API
 @app.get("/", tags=["Root"])
